@@ -33,6 +33,7 @@ my %dependencies;
 my $hline = '#'x$wchar;
 
 # options
+my $paths = '';
 my $debug = '';
 my $help = '';
 my @includepaths;
@@ -51,6 +52,7 @@ sub usage()
 	print "\t--debug\t\t\t= be verbose\n";
 	print "\t--includepaths\t\t= a comma separated list of include paths to search\n";
 	print "\t--maxlevel\t\t= fill the include 'tree' up to maxlevel levels deep (default = 1)\n";
+	print "\t--paths\t\t\t= Leaves full paths in displayed filenames.\n";
 	print "\t--outputfile\t\t= the name and location of the dotfile (default = ./out.dot)\n";
 	print "\t--exclude\t\t= a perl regex of files to exclude\n";
 	print "\t--quotetypes\t\t= quote, angle or both (default).\n";
@@ -161,7 +163,9 @@ sub parsefileforheaders($)
 						my $includefull = findinclude($include, 0, "");
 						if($includefull ne ""){
 							unshift(@file_queue, $includefull);
-							$dependencies{ $_[0] } = $dependencies{ $_[0] } . " \"$includefull\"";
+							my $k = "$includefull";
+							$k = basename($k) unless $paths;
+							$dependencies{ $_[0] } = $dependencies{ $_[0] } . " \"$k\"";
 						}
 					}
 				}
@@ -172,7 +176,9 @@ sub parsefileforheaders($)
 						my $includefull = findinclude($include, 1, dirname($_[0]));
 						if($includefull ne ""){
 							unshift(@file_queue, $includefull);
-							$dependencies{ $_[0] } = $dependencies{ $_[0] } . " \"$includefull\"";
+							my $k = "$includefull";
+							$k = basename($k) unless $paths;
+							$dependencies{ $_[0] } = $dependencies{ $_[0] } . " \"$k\"";
 						}
 					}
 				}
@@ -236,7 +242,7 @@ sub tidypath($)
 
 ################################################################################
 # main
-GetOptions('debug' => \$debug, 'help' => \$help, 'includepaths=s' => \@includepaths, 'maxlevel=i' => \$maxlevel, 'outputfile=s' => \$outputfile, 'exclude=s' => \$exclude, 'quotetypes=s' => \$quotetypes, 'check' => \$check);
+GetOptions('paths' => \$paths, 'debug' => \$debug, 'help' => \$help, 'includepaths=s' => \@includepaths, 'maxlevel=i' => \$maxlevel, 'outputfile=s' => \$outputfile, 'exclude=s' => \$exclude, 'quotetypes=s' => \$quotetypes, 'check' => \$check);
 @includepaths = split(/,/,join(',',@includepaths)); # allow multiple --includepaths directives
 
 $debug and print "$hline\n";
@@ -289,7 +295,9 @@ END
 
 print OUTPUT $header;
 while ( my ($key, $value) = each(%dependencies) ) {
-        print OUTPUT "\"$key\" -> {$value }\n";
+        my $k = "$key";
+        $k = basename($k) unless $paths;
+        print OUTPUT "\"$k\" -> {$value }\n";
 }
 print OUTPUT "}\n";
 close(OUTPUT);
