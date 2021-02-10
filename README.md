@@ -1,6 +1,7 @@
 # C-include-2-dot
 
-It is a modification on the [original version](https://github.com/frabcus/cinclude2dot), released under GNU GPL license. It seems the original author is no longer maintaining it so I just post it here. It requires a Perl interpreter, which is installed on macOS and many Linux distributions by default.
+It is continue of the [version](https://github.com/frabcus/cinclude2dot). The code itself is licensed under the GNU GPL v2 license. Feel free to use
+the code as is, or modify it according to your needs. It requires a Perl 5 interpreter, which is installed on macOS and many Linux distributions by default.
 
 ## Usage:
 - for help message:
