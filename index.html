@@ -1,0 +1,55 @@
+<html>
+
+<head>
+<title>C/C++ Dependency Graphing</title>
+<link href="../flourish.css" type="text/css" rel="stylesheet">
+</head>
+
+<body>
+
+<h1 align=center>C/C++ Depedency Graphing</h1>
+
+<h2 align=center>TortoiseCVS</h2>
+
+<p>This picture was generated from the <a
+href="http://www.tortoisecvs.org">TortoiseCVS</a> source code
+on 23 Feb 2002.  The arrows represent a dependency by one module of
+the code on another module.
+
+<p align=center><img src="data/TortoiseCVS-small.png">
+<p align=center><a href="data/TortoiseCVS.pdf">data/TortoiseCVS.pdf</a>
+
+<p>You can inspect a graph and find where there are unnecessary dependencies.
+This might be because of a forgotten <tt>#include</tt>, or because there is
+a straightforward way to rewrite the code without the dependency.  This
+will speed up compile times, and make code more useful to steal for
+later projects.
+
+<h2 align=center>cinclude2dot.pl</h2>
+
+<p>This is the <a href="http://www.perl.com">Perl</a> script which
+analyses C/C++ code and produces a <tt>#include</tt> dependency graph.
+The output from the script is a dot file for input
+into 
+<a href="http://www.research.att.com/sw/tools/graphviz/">graphviz</a>.
+This is an improved version of the original script, which 
+<a href="http://www.chaosreigns.com/code/cinclude2dot/">you can
+find here</a>. Many thanks to Darxus for creating the original.  The new
+version adds directory clustering, file include path searching and
+various other features.
+
+<p><a href="cinclude2dot"><tt>cinclude2dot (perl script)</tt></a> - Version 1.1 (8.1k) - Generates C/C++ dependency graphs
+<br><a href="cinclude2dot.1"><tt>cinclude2dot.1 (man page)</tt></a> - Documentation in Unix man file format (thanks to John Murdie, may be out of date)
+
+<p>For usage instructions, run the script with <tt>--help</tt>.
+
+<hr>
+
+<table width="100%"><tr>
+<td align=left>
+<a href="../index.html">To Francis's page</a></td>
+<td align=right><i>$Id: index.html 691 2005-12-13 02:15:11Z francis $</i></td>
+</tr></table>
+
+</body>
+</html>

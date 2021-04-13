@@ -1,0 +1,304 @@
+#!/usr/bin/env perl
+
+# This is a tool inspired by cinclude2dot
+# The original can be found here: http://www.chaosreigns.com/code/cinclude2dot/
+# An improved version is to be found here: http://www.flourish.org/cinclude2dot/
+#
+# I wanted a tool that could perform the same tasks, but I would like to be able
+# to specify the point where it should stop searching. I have rewritten cincludedot
+# so that it uses breadth first search (shove as much files on a queue as you can,
+# then pop the first item and push all its nodes a the front of the queue. Rinse and
+# repeat). Inserting level markers gave me an easy way to keep track of the depth.
+#
+# Tasks left to implement:
+#  - the --merge and --groups parameters
+#  - using gcc to check the unnecessary header files (comment out a single file and try to compile)
+
+use strict;
+use warnings;
+use Getopt::Long;
+use File::Find;
+use File::Basename;
+use File::Spec::Functions;
+use Cwd;
+use Term::ReadKey;
+
+my $file = "";
+my $level = 0;
+my @file_queue;
+my $gcc = `which gcc`;
+my %dependencies;
+
+(my $wchar, undef, undef, undef) = GetTerminalSize();
+my $hline = '#'x$wchar;
+
+# options
+my $paths = '';
+my $debug = '';
+my $help = '';
+my @includepaths;
+my $maxlevel = 1;
+my $outputfile = "./out.dot";
+my $exclude = "/^\$/";
+my $quotetypes =  "both";
+my $check = 0;
+
+sub usage()
+{
+	print "$0 [file] [directory]\n";
+	print "Supply one or more files / directories to search for source files\n";
+	print "If no files are supplied, the current directory is used\n";
+	print "Please define the following options:\n";
+	print "\t--debug\t\t\t= be verbose\n";
+	print "\t--includepaths\t\t= a comma separated list of include paths to search\n";
+	print "\t--maxlevel\t\t= fill the include 'tree' up to maxlevel levels deep (default = 1)\n";
+	print "\t--paths\t\t\t= Leaves full paths in displayed filenames.\n";
+	print "\t--outputfile\t\t= the name and location of the dotfile (default = ./out.dot)\n";
+	print "\t--exclude\t\t= a perl regex of files to exclude\n";
+	print "\t--quotetypes\t\t= quote, angle or both (default).\n";
+	print "\t\t\t\tquote - Include only non-local headers (<>)\n";
+	print "\t\t\t\tangle - Include only local headers (\"\")\n";
+	print "\t--check\t\t\t= try to compile header\n";
+
+	exit(1);
+}
+
+sub wanted()
+{
+	my $pwd = cwd();
+	$debug and print "scanning subdirs: $pwd/$_\n";
+	matchfile($pwd."/".$_);
+
+}
+
+sub matchfile($)
+{
+	$_[0] =~ $exclude and return;
+
+	# match any file ending in .c .C .cc .CC .cxx .cpp .h .hpp .hxx
+	$_[0] =~ /.*\.[cC]{1,2}$/ and push(@file_queue, $_[0]);
+	$_[0] =~ /.*\.cpp$/ and push(@file_queue, $_[0]);
+	$_[0] =~ /.*\.cxx$/ and push(@file_queue, $_[0]);
+	$_[0] =~ /.*\.h$/ and push(@file_queue, $_[0]);
+	$_[0] =~ /.*\.hpp$/ and push(@file_queue, $_[0]);
+	$_[0] =~ /.*\.hxx$/ and push(@file_queue, $_[0]);
+}
+
+sub printqueue()
+{
+	foreach $file (@file_queue){
+		print "$file\n";
+	}
+}
+
+sub findinclude($$$)
+{
+	my $include          = $_[0];
+	my $localinclude     = $_[1];
+	my $localincludepath = $_[2];
+	my $tidied = "";
+
+	if ($localinclude) {
+		$tidied = tidypath($localincludepath."/".$include);
+		if($tidied ne ""){
+			$debug and print "Found include $include in $localincludepath\n";
+			return $tidied;
+		}
+	}
+
+	foreach my $includepath (@includepaths){
+		$tidied = tidypath($includepath."/".$include);
+		if($tidied ne ""){
+			$debug and print "Found include $include in $includepath\n";
+			return $tidied;
+		}
+	}
+
+	print "Could not find $include\n";
+	return "";
+}
+
+# forward declaration of recursive function to avoid the 'called too early to check 
+# prototype' warning
+sub parsefileforheaders;
+
+sub parsefileforheaders($)
+{
+	$level >= $maxlevel and return;
+
+	if ($_[0] =~ /^level=\d+$/) {
+		$level++;
+		unshift(@file_queue, "level=$level");
+		$debug and print "Queue marker found for level $level, queue contents:\n";
+		$debug and printqueue();
+		$debug and print "$hline\n";
+
+	} else {
+		$debug and print "Scanning file          : $_[0]\n";
+		$debug and $check and print "checking if $_[0] compiles\n";
+		if($check){
+			if(compilecheck($_[0])){
+				print "$_[0]: compiled OK\n";
+			} else {
+				print "$_[0]: Failed to compile\n";
+			}
+		}
+
+		if(!defined $dependencies{ $_[0] }){
+			$dependencies{ $_[0] } = "";
+
+			if( -e $_[0]){
+				open(INPUT, "<$_[0]");
+				my @lines = <INPUT>;
+				my @includes = grep{/^\#\s*include\s+<(\S+)>$/; defined $1 and $_=$1;} @lines;
+				my @localincludes = grep{/^\#\s*include\s+"(\S+)"$/; defined $1 and $_=$1;} @lines;
+				close(INPUT);
+				
+				$debug and (scalar @localincludes and print "Scanned local includes : @localincludes\n") or (print "Did not find local includes\n");
+				$debug and (scalar @includes and print "Scanned includes       : @includes\n") or (print "Did not find includes\n");
+
+				# add includes with full path to queue
+				if((@includes > 0) && (($quotetypes eq "angle") || ($quotetypes eq "both"))){
+					foreach my $include (@includes){
+						my $includefull = findinclude($include, 0, "");
+						if($includefull ne ""){
+							unshift(@file_queue, $includefull);
+							my $k = "$includefull";
+							$k = basename($k) unless $paths;
+							$dependencies{ $_[0] } = $dependencies{ $_[0] } . " \"$k\"";
+						}
+					}
+				}
+
+				# add local includes with full path to queue
+				if((@localincludes > 0) && (($quotetypes eq "quote") || ($quotetypes eq "both"))){
+					foreach my $include (@localincludes){
+						my $includefull = findinclude($include, 1, dirname($_[0]));
+						if($includefull ne ""){
+							unshift(@file_queue, $includefull);
+							my $k = "$includefull";
+							$k = basename($k) unless $paths;
+							$dependencies{ $_[0] } = $dependencies{ $_[0] } . " \"$k\"";
+						}
+					}
+				}
+			}
+			$debug and print "$hline\n";
+		}
+	}
+
+	if (@file_queue > 0) {
+		parsefileforheaders(pop(@file_queue));
+	}
+}
+
+sub compilecheck($)
+{
+	chomp($gcc);
+	my $cmd = "$gcc";
+
+	foreach my $includepath (@includepaths){
+		$cmd = $cmd . " -I$includepath";
+	}
+
+	$cmd = $cmd . " -c $_[0] -o /tmp/out";
+
+	$debug and $check and print "Compile check: $cmd\n";
+	system($cmd) == 0 and return 1; # OK
+	return 0; # Fail
+}
+
+sub tidypath($)
+{
+	my $tidied = $_[0];
+
+    # expand tilde as full homedir
+    $tidied =~ s/^~/$ENV{"HOME"}/;
+
+	# add a full path to the following patterns:
+	# file.c
+	# dir/file.c
+	# ../file.c
+	# ./file.c
+	$tidied !~ /^\// and $tidied = cwd() . "/" . $tidied;
+
+	# check for file existance and remove these patterns:
+	# /dir/../file.c
+	# /dir/dir/../../dir/../file.c
+	while($tidied =~ m#/[^/]*/\.\./#){
+		$tidied =~ s#/[^/]*/\.\./#/#g;
+	}
+	
+	# remove the pattern /dir/./file.c
+	$tidied = canonpath($tidied);
+
+	if(-e $tidied){
+		return $tidied;
+	}
+
+	$debug and print "$tidied does not exist\n";
+	return "";
+}
+
+################################################################################
+# main
+GetOptions('paths' => \$paths, 'debug' => \$debug, 'help' => \$help, 'includepaths=s' => \@includepaths, 'maxlevel=i' => \$maxlevel, 'outputfile=s' => \$outputfile, 'exclude=s' => \$exclude, 'quotetypes=s' => \$quotetypes, 'check' => \$check);
+@includepaths = split(/,/,join(',',@includepaths)); # allow multiple --includepaths directives
+
+$debug and print "$hline\n";
+$debug and print "The includepaths searched:\n";
+$debug and print "@includepaths\n";
+$debug and print "$hline\n";
+
+if ($help) {
+	usage();
+}
+
+# Use default of ./ if no argument is supplied
+if (!defined $ARGV[0]) {
+	push(@ARGV, "./");
+}
+
+# Detect if arguments are directories or files.
+foreach $file (@ARGV){
+    $file = tidypath($file);
+    if( $file ne ""){
+		# add supplied source files to the queue
+		matchfile($file);
+
+		if(-d $file){
+			find (\&wanted, $file);
+		}
+	}
+}
+$debug and print "$hline\n";
+
+# Queue now filled with 0th level files, insert sentinel
+unshift(@file_queue, "level=$level");
+
+$debug and print "Files in layer $level\n";
+$debug and printqueue();
+$debug and print "$hline\n";
+open(OUTPUT,">$outputfile");
+
+parsefileforheaders(pop(@file_queue)); # start at back of queue
+
+my $header=<<END;
+digraph "source tree" {
+    overlap=scale;
+    size="8,10";
+    ratio="fill";
+    fontsize="32";
+    fontname="Helvetica";
+    node [fontsize="32", fontname="Helvetica"]
+    clusterrank="local";
+END
+
+print OUTPUT $header;
+while ( my ($key, $value) = each(%dependencies) ) {
+        my $k = "$key";
+        $k = basename($k) unless $paths;
+        print OUTPUT "\"$k\" -> {$value }\n";
+}
+print OUTPUT "}\n";
+close(OUTPUT);
